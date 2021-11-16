@@ -1,7 +1,5 @@
 package patmat
 
-import scala.collection.View.Empty
-import scala.runtime.Nothing$
 
 /**
  * A huffman code is represented by a binary tree.
@@ -78,17 +76,33 @@ trait Huffman extends HuffmanInterface {
    *   }
    */
   def times(chars: List[Char]): List[(Char, Int)] = {
-    def charTime(charsList: List[Char], resList: List[(Char, Int)]): List[(Char, Int)] = {
+/*    def charTime(charsList: List[Char], resList: List[(Char, Int)]): List[(Char, Int)] = {
       charsList match {
         case x if x.isEmpty => resList
         case _ => charsList.head match {
-          case x if !(resList.exists(y => y._1 == x )) => charTime(charsList.tail, resList :+ (x, charsList.count(s => s == x)))
+          case x if !resList.exists(y => y._1 == x ) => charTime(charsList.tail, resList :+ (x, charsList.count(s => s == x)))
           case _ => charTime(charsList.tail, resList)
         }
       }
     }
-
     charTime(chars, List())
+
+    */
+    def charTime(charsList: List[Char], resList: List[(Char, Int)], char: Char, sum: Int): List[(Char, Int)] = {
+      charsList match {
+        case Nil => resList:+(char,sum)
+        case _ => charsList.head match {
+          case x if x != char => charTime(charsList.tail, resList:+(char,sum), charsList.head, 1)
+          case _ => charTime(charsList.tail, resList,char , sum+1)
+        }
+      }
+
+    }
+    val list = chars.sortWith((s,t) => s < t)
+    if (list.isEmpty)
+      Nil
+    else
+      charTime(list, List(),list.head,0 )
   }
 
   /**
@@ -100,16 +114,16 @@ trait Huffman extends HuffmanInterface {
    */
   def makeOrderedLeafList(freqs: List[(Char, Int)]): List[Leaf] = {
 
-    def insertLeaf(tupl: (Char, Int), resList: List[Leaf]): List[Leaf] = {
+    def insertLeaf(tuples: (Char, Int), resList: List[Leaf]): List[Leaf] = {
       resList match {
-        case Nil => List(Leaf(tupl._1, tupl._2))
-        case x :: xs => if (tupl._2 < x.weight) Leaf(tupl._1, tupl._2) :: resList else x :: insertLeaf(tupl, xs)
+        case Nil => List(Leaf(tuples._1, tuples._2))
+        case x :: xs => if (tuples._2 < x.weight) Leaf(tuples._1, tuples._2) :: resList else x :: insertLeaf(tuples, xs)
       }
     }
 
     def makeLeafList(list: List[(Char, Int)], resList: List[Leaf]): List[Leaf] = {
       list match {
-        case x if x.isEmpty => resList
+        case Nil => resList
         case _ => makeLeafList(list.tail, insertLeaf(list.head, resList))
       }
     }
@@ -123,7 +137,8 @@ trait Huffman extends HuffmanInterface {
   def singleton(trees: List[CodeTree]): Boolean = {
     trees match {
       case Nil => false
-      case x :: xs => !(singleton(xs))
+      case List(x) => true
+      case x :: xs => false
     }
   }
 
@@ -163,7 +178,7 @@ trait Huffman extends HuffmanInterface {
     trees match {
       case Nil => trees
       case x if x.tail.isEmpty => trees
-      case x :: xs => if (done(trees)) merge(trees) else trees
+      case x :: xs => if (done(trees)) until(done, merge)(merge(trees)) else trees
     }
 
   }
@@ -175,10 +190,90 @@ trait Huffman extends HuffmanInterface {
    * frequencies from that text and creates a code tree based on them.
    */
   def createCodeTree(chars: List[Char]): CodeTree = {
-    val res = combine(until(x => singleton(x),y => combine(y))(makeOrderedLeafList(times(chars))))
-    makeCodeTree(res.head, res.tail.head)
-  }
+/*
+    val treeList = combine(until(singleton,combine)(makeOrderedLeafList(times(chars))))
+    makeCodeTree(treeList.head, treeList.tail.head)
+*/
 
+   def union(list: List[CodeTree]): List[CodeTree] = {
+      list match {
+        case Nil => list
+        case List(x) => list
+        case x :: xs => makeCodeTree(x, xs.head) :: union(xs.tail)
+      }
+    }
+
+    def checkWeight(codeTree: CodeTree): Int ={
+      codeTree match {
+        case fork: Fork => fork.weight
+        case leaf: Leaf => leaf.weight
+      }
+    }
+
+    def unionFork(subtree: List[CodeTree]): CodeTree = {
+      subtree match {
+        case Nil => subtree.head
+        case List(x) => x
+        case x if x.length == 2 => makeCodeTree(subtree.head, subtree.last)
+        case x :: xs =>
+          val (first, second) = subtree span (y => checkWeight(y) <= checkWeight(x))
+          first.length match {
+            case len if len == 1 => unionFork(union(xs.tail ::: List(first.head, xs.head)))
+            case len if len > 1 => unionFork(union(first) ::: second)
+          }
+      }
+    }
+    unionFork(makeOrderedLeafList(times(chars)))
+
+
+/*    def checkWeight(codeTree: CodeTree): Int ={
+      codeTree match {
+        case fork: Fork => fork.weight
+        case leaf: Leaf => leaf.weight
+      }
+    }
+
+    def union(list: List[CodeTree]): List[CodeTree] = {
+      list match {
+        case Nil => list
+        case List(x) => list
+        case x :: xs => makeCodeTree(x, xs.head) :: union(xs.tail)
+      }
+    }
+
+    def unionFork(subtree: List[CodeTree]): List[CodeTree] = {
+      subtree match {
+        case Nil => subtree
+        case List(x) => subtree
+        case x if x.length == 2 => subtree
+        case x :: xs =>
+          val (first, second) = subtree span (y => checkWeight(y) <= checkWeight(x))
+          first.length match {
+            case len if len == 1 => union(List(first.head, xs.head)) ::: xs.tail
+            case len if len > 1 => union(first.sortWith((a,b) => checkWeight(a) < checkWeight(b))) ::: second
+          }
+      }
+    }
+
+    def creator(list: List[CodeTree]): CodeTree = {
+
+      list match {
+        case Nil => list.head
+        case List(x) => list.head
+        case x :: xs =>
+          val (first, second) = list span (y => checkWeight(y) <= checkWeight(x))
+          first.length match {
+            case len if len == 1 => creator(List(makeCodeTree(first.head, second.head)) ::: xs.tail)
+            case len if len > 1 => creator(until(singleton, combine)(first) ::: second)
+          }
+
+      }
+    }
+
+    creator(makeOrderedLeafList(times(chars)))*/
+
+
+  }
 
   // Part 3: Decoding
 
